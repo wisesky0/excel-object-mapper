@@ -3,30 +3,29 @@
  */
 package io.github.mapper.excel;
 
+import io.github.mapper.excel.util.EachFieldCallback;
+import io.github.mapper.excel.util.ReflectionUtils;
+import io.github.mapper.excel.util.WorkbookCallback;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-
-//import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.FillPatternType;
-import org.apache.poi.ss.usermodel.IndexedColors;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.xssf.usermodel.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.github.mapper.excel.util.EachFieldCallback;
-import io.github.mapper.excel.util.ReflectionUtils;
-import io.github.mapper.excel.util.WorkbookCallback;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 /**
  * @author redcrow
@@ -34,9 +33,9 @@ import io.github.mapper.excel.util.WorkbookCallback;
  * @author Mohsen.Mahmoudi
  * 
  */
-public class ExcelMapper {
+public class ExcelStream {
 
-	private static final Logger LOG = LoggerFactory.getLogger(ExcelMapper.class);
+	private static final Logger LOG = LoggerFactory.getLogger(ExcelStream.class);
 
 	private Class<?> clazz;
 	private final XSSFWorkbook workbook;
@@ -53,81 +52,91 @@ public class ExcelMapper {
 	private Integer startRowNumber;
 	private Integer endRowNumber;
 
-	private ExcelMapper(File excelFile) throws Throwable {
+	private ExcelStream(File excelFile) throws Throwable {
 		this.workbook = new XSSFWorkbook(excelFile);
 	}
 
-	private ExcelMapper(FileInputStream excelFile) throws Throwable {
+	private ExcelStream(FileInputStream excelFile) throws Throwable {
 		this.workbook = new XSSFWorkbook(excelFile);
 	}
 
-	private ExcelMapper(byte[] excelByteFile) throws Throwable {
+	private ExcelStream(byte[] excelByteFile) throws Throwable {
 		this.workbook = new XSSFWorkbook(new ByteArrayInputStream(excelByteFile));
 	}
 
-	public static ExcelMapper mapFromExcel(File excelFile) throws Throwable {
-		return new ExcelMapper(excelFile);
+	public static ExcelStream mapFromExcel(File excelFile) throws Throwable {
+		return new ExcelStream(excelFile);
 	}
 
-	public static ExcelMapper mapFromExcel(FileInputStream excelFile) throws Throwable {
-		return new ExcelMapper(excelFile);
+	public static ExcelStream mapFromExcel(FileInputStream excelFile) throws Throwable {
+		return new ExcelStream(excelFile);
 	}
 
-	public static ExcelMapper mapFromExcel(byte[] excelByteFile) throws Throwable {
-		return new ExcelMapper(excelByteFile);
+	public static ExcelStream mapFromExcel(byte[] excelByteFile) throws Throwable {
+		return new ExcelStream(excelByteFile);
 	}
 
-	public ExcelMapper toObjectOf(Class<?> clazz) {
+	public ExcelStream toObjectOf(Class<?> clazz) {
 		this.clazz = clazz;
 		return this;
 	}
 
-	public ExcelMapper mapFieldFrom(Map<String, Integer> fieldToColumnIndex) {
+	public ExcelStream mapFieldFrom(Map<String, Integer> fieldToColumnIndex) {
 		this.fieldToColumnIndex = fieldToColumnIndex;
 		return this;
 	}
 
-	public ExcelMapper fromSheet(int... sheetNumbers) {
+	public ExcelStream fromSheet(int... sheetNumbers) {
 		this.sheet = sheetNumbers;
 		return this;
 	}
 
-	public ExcelMapper handleCellExceptions() {
+	public ExcelStream fromSheet(String... sheetNames) {
+		List<Integer> integers = Arrays.asList(sheetNames).stream().map(this.workbook::getSheetIndex).collect(Collectors.toList());
+		int[] sheets = new int[integers.size()];
+		for(int i = 0; i < sheets.length; i++) {
+			sheets[i] = integers.get(i);
+		}
+		this.sheet = sheets;
+		return this;
+	}
+
+	public ExcelStream handleCellExceptions() {
 		this.handleCellExceptions = true;
 		return this;
 	}
 
-	public ExcelMapper mapRowThatCellsHaveException() {
+	public ExcelStream mapRowThatCellsHaveException() {
 		this.mustMapRowThatCellsHaveException = true;
 		return this;
 	}
 
-	public ExcelMapper getAllExceptions(List listExceptions) {
+	public ExcelStream getAllExceptions(List listExceptions) {
 		this.listExceptions = listExceptions;
 		return this;
 	}
 
-	public ExcelMapper headerRowNumber(Integer headerRowNumber) {
+	public ExcelStream headerRowNumber(Integer headerRowNumber) {
 		this.headerRowNumber = headerRowNumber;
 		return this;
 	}
 
-	public ExcelMapper startRowNumber(Integer startRowNumber) {
+	public ExcelStream startRowNumber(Integer startRowNumber) {
 		this.startRowNumber = startRowNumber;
 		return this;
 	}
 
-	public ExcelMapper endRowNumber(Integer endRowNumber) {
+	public ExcelStream endRowNumber(Integer endRowNumber) {
 		this.endRowNumber = endRowNumber;
 		return this;
 	}
 
-	public ExcelMapper getWorkbookExceptions(WorkbookCallback callback) {
+	public ExcelStream getWorkbookExceptions(WorkbookCallback callback) {
 		this.callback = callback;
 		return this;
 	}
 
-	public ExcelMapper cellExceptionsColor(IndexedColors indexColor) throws Throwable {
+	public ExcelStream cellExceptionsColor(IndexedColors indexColor) throws Throwable {
 		cellExceptionBackground = this.workbook.createCellStyle();
 		cellExceptionBackground.setFillForegroundColor(indexColor.index);
 		cellExceptionBackground.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -153,6 +162,16 @@ public class ExcelMapper {
 		}
 
 		return items;
+	}
+
+	private Stream<Row> toStreamBySheet(int sheetNumber) {
+		XSSFSheet sheet = this.workbook.getSheetAt(sheetNumber);
+		return StreamSupport.stream(sheet.spliterator(), false);
+	}
+
+	private Stream<Row> toStreamBySheet(String sheetName) {
+		XSSFSheet sheet = this.workbook.getSheet(sheetName);
+		return StreamSupport.stream(sheet.spliterator(), false);
 	}
 
 	private <T> void processSheet(List<T> items, int sheetNumber) throws Throwable {
